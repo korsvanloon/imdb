@@ -36,6 +36,39 @@ Future<List<Movie>> getMovies() async {
   return movies;
 }
 
+List<Person> buildPersons(List<Movie> movies, Symbol s) {
+  var result = [];
+  var personMaps = <String, Person>{};
+
+  movies.forEach((movie) {
+    InstanceMirror im = reflect(movie);
+
+    im.getField(s).reflectee.forEach((actor) { // for each actor (or actress)
+
+      if (!personMaps.containsKey(actor['name'])) {
+
+        personMaps[actor['name']] = new Person()..name = actor['name'];
+      }
+
+      personMaps[actor['name']].movies.add({
+        'title': movie.title,
+        'year':movie.year,
+        'score': movie.rating['average'],
+        'rank': actor['rank']
+      });
+    });
+  });
+
+  personMaps.forEach((name, person) {
+
+    person.movies.sort((a, b) => b['year'] - a['year']);
+    var scores = person.movies.take(5).map((m) => m['score']);
+    person.score = scores.fold(0, (total, current) => total+current) / scores.length;
+  });
+
+  return personMaps.values.toList();
+}
+
 Map<String, double> calcEntityValues(List<Movie> movies, Symbol s) {
   var entityValues = {};
   movies.forEach((m) {
@@ -55,7 +88,7 @@ Map<String, double> calcEntityValues(List<Movie> movies, Symbol s) {
 //    entityValues[k] = value;
 //  });
   entityValues.keys.forEach((k) {
-    entityValues[k] = entityValues[k].fold(0, (p, c) => p + double.parse(c['average'])) / entityValues[k].length / 10;
+    entityValues[k] = entityValues[k].fold(0, (p, c) => p + c['average']) / entityValues[k].length / 10;
   });
 //  entityValues.keys.forEach((k) => entityValues[k] = (entityValues[k] - min) / (max - min));
   return entityValues;

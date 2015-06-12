@@ -9,13 +9,13 @@ main(List<String> arguments) async {
 
   var movies = await getMovies();
 
-  if(arguments.contains('norm')) {
+//  if(arguments.contains('norm')) {
     var normalizedMovies = norm(movies);
     writeNormalisedToFile(normalizedMovies);
-  }
-  else {
-    writeAsFile(movies);
-  }
+//  }
+//  else {
+//    writeAsFile(movies);
+//  }
 
   sw.stop();
   print('time: ${sw.elapsedMilliseconds} milliseconds');
@@ -23,7 +23,7 @@ main(List<String> arguments) async {
 
 writeNormalisedToFile(List<Map> movies) {
   print('writing to out/normalised_movies');
-  var file = new File('out/normalised_movies2');
+  var file = new File('out/normalised_movies');
 
   file.writeAsStringSync(movies.first.keys.join('\t'));
 
@@ -50,8 +50,14 @@ List<Map> norm(List<Movie> movies) {
   var producers = calcEntityValues(movies, #producers);
   var writers = calcEntityValues(movies, #writers);
 
-  var actors = calcEntityValues(movies, #actors);
-  var actresses = calcEntityValues(movies, #actresses);
+
+  var actors = new Map.fromIterable(buildPersons(movies, #actors),
+    key: (p) => p.name,
+    value: (p) => p.score);
+
+  var actresses = new Map.fromIterable(buildPersons(movies, #actresses),
+    key: (p) => p.name,
+    value: (p) => p.score);
 
   var cinematographers = calcEntityValues(movies, #cinematographers);
   var composers = calcEntityValues(movies, #composers);
@@ -61,7 +67,7 @@ List<Map> norm(List<Movie> movies) {
 
   return movies.map((m) => {
     'title': m.title,
-    'rating': double.parse(m.rating['average']),
+    'rating': m.rating['average'],
     'runningTime': m.runningTime,
     'year': m.year,
     'budget': m.budget,
@@ -73,8 +79,8 @@ List<Map> norm(List<Movie> movies) {
     'directors': average(m.directors, directors, m.rating['average']),
     'producers': average(m.producers, producers, m.rating['average']),
     'writers': average(m.writers, writers, m.rating['average']),
-    'actors': average(m.actors, actors, m.rating['average']),
-    'actresses': average(m.actresses, actresses, m.rating['average']),
+    'actors': averageBestActors(m.actors, actors),
+    'actresses': averageBestActors(m.actresses, actresses),
     'cinematographers': average(m.cinematographers, cinematographers, m.rating['average']),
     'composers': average(m.composers, composers, m.rating['average']),
     'costumeDesigners': average(m.costumeDesigners, costumeDesigners, m.rating['average']),
@@ -83,7 +89,17 @@ List<Map> norm(List<Movie> movies) {
   }).toList();
 }
 
-average(List list, Map refs, String rating) {
-  if(list.length == 0) return double.parse(rating);
+/// Given the actors of a film, give me the actor-rating of the film
+averageBestActors(List actors, Map refs) {
+  var topActors = actors
+  .where((Map actor) => actor.containsKey('rank') && actor['rank'] < 11);
+  return topActors
+    .map((actor) => refs[actor['name']])
+    .fold(0, (v,e) => v+e) / topActors.length;
+}
+
+average(List list, Map refs, double rating) {
+//  if(list.length == 0) return double.NAN;
   return list.map((v) => refs[v]).fold(0, (v,e) => v+e) / list.length;
 }
+

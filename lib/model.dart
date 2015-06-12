@@ -26,12 +26,18 @@ class Movie {
   List<String> producers = [];
   List<String> writers = [];
 
-  List<String> actors = [];
-  List<String> actresses = [];
+  List<Map> actors = [];
+  List<Map> actresses = [];
 
   List<String> cinematographers = [];
   List<String> composers = [];
   List<String> costumeDesigners = [];
   List<String> productionCompanies = [];
   List<String> specialEffectsCompanies = [];
+}
+
+class Person {
+  String name;
+  List<Map> movies = [];
+  double score;
 }

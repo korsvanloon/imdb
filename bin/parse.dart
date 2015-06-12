@@ -12,7 +12,7 @@ main() async {
   mongo.Db db = new mongo.Db('mongodb://localhost/imdb');
   await db.open();
 
-  var persons = [
+  var personTypes = [
     'genres',
     'keywords',
 
@@ -31,27 +31,37 @@ main() async {
     'specialEffectsCompanies',
   ];
 
-
   var movies = await getMovies();
+  await savePersons(db, movies, personTypes);
+//  var movies = await buildMovies();
 //  await saveMovies(db, movies);
-  await savePersons(db, movies, persons);
 
   db.close();
   sw.stop();
   print('time: ${sw.elapsedMilliseconds} milliseconds');
 }
 
-savePersons(mongo.Db db, List<Movie> movies, List<String> persons) async {
+savePersons(mongo.Db db, List<Movie> movies, List<String> personTypes) async {
 
-  await Future.wait(persons.map((p) => db.collection(p).drop()));
+  await Future.wait(personTypes.map((p) => db.collection(p).drop()));
 
   return await Future.wait(
-    persons.map((p) {
-      print('saving normalised $p to mongodb');
-      var personValues = calcEntityValues(movies, new Symbol(p));
-      return Future.wait(
-        personValues.keys.map((k) => db.collection(p).insert({'name': k, 'score': personValues[k]}))
-      );
+    personTypes.map((personType) {
+
+      print('saving normalised $personType to mongodb');
+
+      if(['actors', 'actresses'].contains(personType)) {
+        var persons = buildPersons(movies, new Symbol(personType));
+        return Future.wait(
+          persons.map((person) => db.collection(personType).insert(toMap(person)))
+        );
+      } else {
+
+        var personValues = calcEntityValues(movies, new Symbol(personType));
+        return Future.wait(
+          personValues.keys.map((name) => db.collection(personType).insert({'name': name, 'score': personValues[name]}))
+        );
+      }
     })
   );
 }
@@ -64,7 +74,6 @@ saveMovies(mongo.Db db, List<Movie> movies) async {
       movies.map(toMap).map(db.collection('movie').insert)
   );
 }
-
 
 Future<List<Movie>> buildMovies() async {
 
@@ -86,9 +95,9 @@ Future<List<Movie>> buildMovies() async {
   await simpleParse(moviesMap, new File('imdb/countries.list'), (m, i) => m.country = i);
 
   print('actors');
-  await personParse(moviesMap, new File('imdb/actors.list'), (m, i) => m.actors.add(i));
+  await actorsParse(moviesMap, new File('imdb/actors.list'), (m, i) => m.actors.add(i));
   print('actresses');
-  await personParse(moviesMap, new File('imdb/actresses.list'), (m, i) => m.actresses.add(i));
+  await actorsParse(moviesMap, new File('imdb/actresses.list'), (m, i) => m.actresses.add(i));
 
   print('editors');
   await personParse(moviesMap, new File('imdb/editors.list'), (m, i) => m.editors.add(i));
@@ -107,15 +116,63 @@ Future<List<Movie>> buildMovies() async {
   await personParse(moviesMap, new File('imdb/costume-designers.list'), (m, i) => m.costumeDesigners.add(i));
 
   print('special effects companies');
-  await simpleParse(moviesMap, new File('imdb/special-effects-companies.list'), (m, i) => m.specialEffectsCompanies);
+  await simpleParse(moviesMap, new File('imdb/special-effects-companies.list'), (m, i) => m.specialEffectsCompanies.add(i));
   print('production companies');
   await simpleParse(moviesMap, new File('imdb/production-companies.list'), (m, i) => m.productionCompanies.add(i));
   print('release date');
   await simpleParse(moviesMap, new File('imdb/release-dates.list'), (m, i) => m.releaseDates[i.split(':').first] = i.split(':').last);
-  return moviesMap.values;
+  return moviesMap.values.toList();
 }
 
 typedef void UpdateMovie(Movie m, value);
+
+
+actorsParse(Map<String, Movie> movies, File file, UpdateMovie update) async {
+  var entriesPattern = new RegExp(r'([^\t]+)');
+  var rankPattern = new RegExp(r'<(\d+)>');
+  var updates = 0;
+
+  var latestPerson;
+  var latestMovies;
+  var latestMovie;
+
+  (await file.readAsLines(encoding:LATIN1))
+  .forEach((line) {
+    var entriesMatch = entriesPattern.allMatches(line);
+
+    if (entriesMatch.isEmpty) return;
+
+    if (entriesMatch.length > 1) { // if first line (actor   title)
+
+      if (latestMovies != null)
+        latestMovies.forEach((movie) {
+          if (movies.containsKey(movie['title'])) {
+            updates++;
+            var person = {'name': latestPerson};
+            if(movie.containsKey('rank'))
+              person['rank'] = movie['rank'];
+            update(movies[movie['title']], person);
+          }
+        });
+
+      latestPerson = entriesMatch.first.group(1);
+
+      latestMovies = [];
+      latestMovie = {'title': entriesMatch.elementAt(1).group(1).split('  ').first};
+
+    } else { // if just title
+      var movie = entriesMatch.first.group(1).split('  ').first;
+      if (movie.startsWith('"')) return;
+      latestMovie = {'title': movie};
+    }
+
+    var rank = rankPattern.firstMatch(line);
+    if(rank != null) latestMovie['rank'] = int.parse(rank.group(1));
+
+    latestMovies.add(latestMovie);
+  });
+  print(updates);
+}
 
 personParse(Map<String, Movie> movies, File file, UpdateMovie update) async {
   var entriesPattern = new RegExp(r'([^\t]+)');
